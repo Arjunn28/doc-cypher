@@ -70,36 +70,40 @@ def load_bm25_index() -> Tuple[BM25Okapi, List[Dict]]:
 # BM25 Search
 # ─────────────────────────────────────────────
 
-def bm25_search(query: str, top_k: int = TOP_K_EACH) -> List[Dict]:
+def bm25_search(query: str, top_k: int = TOP_K_EACH, filename_filter: str = None) -> List[Dict]:
     """
-    Searches the BM25 index for chunks matching the query keywords.
-    
-    Returns ranked list of chunks with their BM25 scores.
-    BM25 is particularly good at:
-    - Exact keyword matches
-    - Named entities (people, companies, product names)
-    - Technical terms, codes, section numbers
+    Searches BM25 index for keyword matches.
+    Optional filename_filter restricts search to a specific document.
     """
+    import math
     bm25, chunks = load_bm25_index()
 
-    # Tokenize query the same way we tokenized the corpus
-    tokenized_query = query.lower().split()
+    # Filter chunks by filename if specified
+    if filename_filter:
+        filtered_chunks = [c for c in chunks if c["filename"] == filename_filter]
+        filtered_corpus = [c["text"].lower().split() for c in filtered_chunks]
+        if not filtered_chunks:
+            return []
+        bm25_filtered = BM25Okapi(filtered_corpus)
+        tokenized_query = query.lower().split()
+        scores = bm25_filtered.get_scores(tokenized_query)
+        active_chunks = filtered_chunks
+    else:
+        tokenized_query = query.lower().split()
+        scores = bm25.get_scores(tokenized_query)
+        active_chunks = chunks
 
-    # Get BM25 scores for all chunks
-    scores = bm25.get_scores(tokenized_query)
-
-    # Get top K indices sorted by score descending
     top_indices = np.argsort(scores)[::-1][:top_k]
 
     results = []
     for rank, idx in enumerate(top_indices):
-        if scores[idx] > 0:  # only include chunks with non-zero score
+        if scores[idx] > 0:
             results.append({
-                "chunk_id": chunks[idx]["chunk_id"],
-                "text": chunks[idx]["text"],
-                "filename": chunks[idx]["filename"],
-                "page_num": chunks[idx]["page_num"],
-                "chunk_index": chunks[idx]["chunk_index"],
+                "chunk_id": active_chunks[idx]["chunk_id"],
+                "text": active_chunks[idx]["text"],
+                "filename": active_chunks[idx]["filename"],
+                "page_num": active_chunks[idx]["page_num"],
+                "chunk_index": active_chunks[idx]["chunk_index"],
                 "bm25_score": float(scores[idx]),
                 "bm25_rank": rank + 1,
                 "source": "bm25",
@@ -111,19 +115,10 @@ def bm25_search(query: str, top_k: int = TOP_K_EACH) -> List[Dict]:
 # ChromaDB Vector Search
 # ─────────────────────────────────────────────
 
-def vector_search(query: str, top_k: int = TOP_K_EACH) -> List[Dict]:
+def vector_search(query: str, top_k: int = TOP_K_EACH, filename_filter: str = None) -> List[Dict]:
     """
-    Searches ChromaDB for semantically similar chunks using embeddings.
-    
-    Process:
-    1. Embed the query using the same model used for documents
-    2. ChromaDB finds chunks with highest cosine similarity to query embedding
-    3. Returns ranked results with similarity scores
-    
-    Vector search is particularly good at:
-    - Semantic similarity ("automobile" matches "car")
-    - Paraphrased questions
-    - Conceptual queries
+    Searches ChromaDB for semantically similar chunks.
+    Optional filename_filter restricts search to a specific document.
     """
     model = get_embedding_model()
     client = get_chroma_client()
@@ -132,14 +127,16 @@ def vector_search(query: str, top_k: int = TOP_K_EACH) -> List[Dict]:
     if collection.count() == 0:
         return []
 
-    # Embed the query
     query_embedding = model.encode([query]).tolist()[0]
 
-    # Query ChromaDB
+    # Build where clause for document filtering
+    where = {"filename": filename_filter} if filename_filter else None
+
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=min(top_k, collection.count()),
         include=["documents", "metadatas", "distances"],
+        where=where,
     )
 
     chunks = []
@@ -150,10 +147,7 @@ def vector_search(query: str, top_k: int = TOP_K_EACH) -> List[Dict]:
             results["metadatas"][0],
             results["distances"][0],
         )):
-            # ChromaDB returns cosine distance (0=identical, 2=opposite)
-            # Convert to similarity score (higher = better)
             similarity = 1 - (dist / 2)
-
             chunks.append({
                 "chunk_id": id_,
                 "text": doc,
@@ -234,31 +228,22 @@ def reciprocal_rank_fusion(
 # Main hybrid search function
 # ─────────────────────────────────────────────
 
-def hybrid_search(query: str, top_k: int = 20) -> List[Dict]:
+def hybrid_search(query: str, top_k: int = 20, filename_filter: str = None) -> List[Dict]:
     """
-    The main entry point for retrieval.
-    Runs BM25 and vector search in parallel, fuses with RRF.
-    Returns top_k results for the reranker to process.
-    
-    We return more than needed (default 20) because the reranker
-    will cut this down to the final top 5 most relevant chunks.
+    Hybrid BM25 + vector search with RRF fusion.
+    Optional filename_filter scopes search to a specific document.
     """
-    print(f"\n>> Hybrid search for: '{query}'")
+    filter_msg = f" (filtered to: {filename_filter})" if filename_filter else " (all documents)"
+    print(f"\n>> Hybrid search for: '{query}'{filter_msg}")
 
-    # Run both searches
-    bm25_results = bm25_search(query, top_k=TOP_K_EACH)
-    vector_results = vector_search(query, top_k=TOP_K_EACH)
+    bm25_results = bm25_search(query, top_k=TOP_K_EACH, filename_filter=filename_filter)
+    vector_results = vector_search(query, top_k=TOP_K_EACH, filename_filter=filename_filter)
 
     print(f"   BM25 returned: {len(bm25_results)} results")
     print(f"   Vector returned: {len(vector_results)} results")
 
-    # Fuse with RRF
     fused = reciprocal_rank_fusion(bm25_results, vector_results)
-
-    # Take top_k for reranking
     top_results = fused[:top_k]
-
-    # Count how many were found by both
     both_count = sum(1 for r in top_results if r.get("found_by_both"))
     print(f"   After RRF fusion: {len(top_results)} results ({both_count} found by both retrievers)")
 

@@ -43,6 +43,7 @@ os.makedirs(UPLOAD_PATH, exist_ok=True)
 
 class QueryRequest(BaseModel):
     query: str
+    filename_filter: str = None  # optional — None means search all docs
 
 # ─────────────────────────────────────────────
 # Endpoints
@@ -95,15 +96,15 @@ def query(request: QueryRequest):
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    result = answer_query(request.query)
-
+    result = answer_query(request.query, filename_filter=request.filename_filter)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
 
     return result
 
 @app.get("/stream")
-def stream(query: str):
+def stream(query: str, filename_filter: str = None):
+
     """
     Ask a question — streaming response using Server-Sent Events.
     Returns tokens as they arrive from the LLM.
@@ -116,7 +117,7 @@ def stream(query: str):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     return StreamingResponse(
-        stream_answer(query),
+        stream_answer(query, filename_filter=filename_filter),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

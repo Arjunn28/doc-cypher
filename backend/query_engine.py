@@ -79,7 +79,7 @@ ANSWER (with inline citations):"""
 # Streaming query
 # ─────────────────────────────────────────────
 
-def stream_answer(query: str) -> Generator[str, None, None]:
+def stream_answer(query: str, filename_filter: str = None) -> Generator[str, None, None]:
     """
     Full RAG pipeline with streaming output.
 
@@ -101,8 +101,9 @@ def stream_answer(query: str) -> Generator[str, None, None]:
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
     # Step 1: Hybrid retrieval
+    filter_msg = f" (scoped to: {filename_filter})" if filename_filter else " (all documents)"
     print(f"\n{'='*50}")
-    print(f"QUERY: {query}")
+    print(f"QUERY: {query}{filter_msg}")
     print(f"{'='*50}")
 
     candidates = hybrid_search(query, top_k=TOP_K_RETRIEVE)
@@ -163,15 +164,14 @@ def stream_answer(query: str) -> Generator[str, None, None]:
 # ─────────────────────────────────────────────
 # Non-streaming query (for testing)
 # ─────────────────────────────────────────────
-
-def answer_query(query: str) -> Dict:
+def answer_query(query: str, filename_filter: str = None) -> Dict:
     """
     Non-streaming version — collects the full answer at once.
     Used for testing and for the /query endpoint fallback.
     """
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-    candidates = hybrid_search(query, top_k=TOP_K_RETRIEVE)
+    candidates = hybrid_search(query, top_k=TOP_K_RETRIEVE, filename_filter=filename_filter)
     if not candidates:
         return {"error": "No documents found. Please upload a PDF first."}
 
