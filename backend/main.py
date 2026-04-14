@@ -43,7 +43,8 @@ os.makedirs(UPLOAD_PATH, exist_ok=True)
 
 class QueryRequest(BaseModel):
     query: str
-    filename_filter: str = None  # optional — None means search all docs
+    filename_filter: list = None  # list of filenames, None = all docs
+
 
 # ─────────────────────────────────────────────
 # Endpoints
@@ -102,26 +103,44 @@ def query(request: QueryRequest):
 
     return result
 
+# @app.get("/stream")
+# def stream(query: str, filename_filter: str = None):
+
+#     """
+#     Ask a question — streaming response using Server-Sent Events.
+#     Returns tokens as they arrive from the LLM.
+#     Frontend receives:
+#     1. A citations JSON block first
+#     2. Token by token content
+#     3. A done signal
+#     """
+#     if not query.strip():
+#         raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+#     return StreamingResponse(
+#         stream_answer(query, filename_filter=filename_filter),
+#         media_type="text/event-stream",
+#         headers={
+#             "Cache-Control": "no-cache",
+#             "X-Accel-Buffering": "no",  # disable nginx buffering for streaming
+#         },
+#     )
+
 @app.get("/stream")
 def stream(query: str, filename_filter: str = None):
-
-    """
-    Ask a question — streaming response using Server-Sent Events.
-    Returns tokens as they arrive from the LLM.
-    Frontend receives:
-    1. A citations JSON block first
-    2. Token by token content
-    3. A done signal
-    """
+    """filename_filter is comma-separated: 'doc1.pdf,doc2.pdf'"""
     if not query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
-
+    
+    # Parse comma-separated filenames into a list
+    filter_list = [f.strip() for f in filename_filter.split(",")] if filename_filter else None
+    
     return StreamingResponse(
-        stream_answer(query, filename_filter=filename_filter),
-        media_type="text/event-stream",
+        stream_answer(query, filename_filter=filter_list),
+        media_type="text/plain",  # ✅ fixed
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # disable nginx buffering for streaming
+            "X-Accel-Buffering": "no"
         },
     )
 
@@ -164,6 +183,76 @@ def list_documents():
         for d in docs.values()
     ]
 
+    @app.delete("/documents/{filename}")
+    def delete_document(filename: str):
+        """
+        Deletes a document from ChromaDB, BM25 index, and uploads folder.
+        """
+        import json
+        from backend.ingest import get_chroma_client, get_collection, BM25_PATH, UPLOAD_PATH
+
+        errors = []
+
+        # 1. Remove from ChromaDB
+        try:
+            client = get_chroma_client()
+            collection = get_collection(client)
+            existing = collection.get(where={"filename": filename})
+            if existing["ids"]:
+                collection.delete(ids=existing["ids"])
+                print(f"Deleted {len(existing['ids'])} chunks from ChromaDB for {filename}")
+        except Exception as e:
+            errors.append(f"ChromaDB: {str(e)}")
+
+        # 2. Remove from BM25 index
+        # 2. Remove from BM25 index
+        try:
+            corpus_path = os.path.join(BM25_PATH, "corpus.json")
+            if os.path.exists(corpus_path):
+                with open(corpus_path, "r") as f:
+                    saved = json.load(f)
+                
+                # Keep only chunks NOT from the deleted file
+                kept_chunks = [c for c in saved["chunks"] if c["filename"] != filename]
+                kept_corpus = [saved["corpus"][i] for i, c in enumerate(saved["chunks"]) if c["filename"] != filename]
+                
+                with open(corpus_path, "w") as f:
+                    json.dump({"chunks": kept_chunks, "corpus": kept_corpus}, f)
+                
+                removed = len(saved["chunks"]) - len(kept_chunks)
+                print(f"Removed {removed} chunks from BM25 for {filename}")
+        except Exception as e:
+            errors.append(f"BM25: {str(e)}")
+
+        # 3. Delete the actual file
+        try:
+            filepath = os.path.join(UPLOAD_PATH, filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception as e:
+            errors.append(f"File: {str(e)}")
+
+        if errors:
+            raise HTTPException(status_code=500, detail=f"Partial delete errors: {errors}")
+
+        return {"status": "success", "message": f"{filename} deleted successfully"}
+
+
+    @app.get("/documents/{filename}/download")
+    def download_document(filename: str):
+        """
+        Serves the original PDF for download.
+        """
+        from fastapi.responses import FileResponse
+        filepath = os.path.join(UPLOAD_PATH, filename)
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="File not found.")
+        return FileResponse(
+            path=filepath,
+            media_type="application/pdf",
+            filename=filename,
+        )
+    
     return {
         "documents": doc_list,
         "total_chunks": len(chunks),

@@ -70,27 +70,22 @@ def load_bm25_index() -> Tuple[BM25Okapi, List[Dict]]:
 # BM25 Search
 # ─────────────────────────────────────────────
 
-def bm25_search(query: str, top_k: int = TOP_K_EACH, filename_filter: str = None) -> List[Dict]:
+def bm25_search(query: str, top_k: int = TOP_K_EACH, filename_filter: list = None) -> List[Dict]:
     """
-    Searches BM25 index for keyword matches.
-    Optional filename_filter restricts search to a specific document.
+    Searches BM25. filename_filter is now a list of filenames.
     """
-    import math
     bm25, chunks = load_bm25_index()
 
-    # Filter chunks by filename if specified
     if filename_filter:
-        filtered_chunks = [c for c in chunks if c["filename"] == filename_filter]
-        filtered_corpus = [c["text"].lower().split() for c in filtered_chunks]
+        filtered_chunks = [c for c in chunks if c["filename"] in filename_filter]
         if not filtered_chunks:
             return []
+        filtered_corpus = [c["text"].lower().split() for c in filtered_chunks]
         bm25_filtered = BM25Okapi(filtered_corpus)
-        tokenized_query = query.lower().split()
-        scores = bm25_filtered.get_scores(tokenized_query)
+        scores = bm25_filtered.get_scores(query.lower().split())
         active_chunks = filtered_chunks
     else:
-        tokenized_query = query.lower().split()
-        scores = bm25.get_scores(tokenized_query)
+        scores = bm25.get_scores(query.lower().split())
         active_chunks = chunks
 
     top_indices = np.argsort(scores)[::-1][:top_k]
@@ -114,11 +109,9 @@ def bm25_search(query: str, top_k: int = TOP_K_EACH, filename_filter: str = None
 # ─────────────────────────────────────────────
 # ChromaDB Vector Search
 # ─────────────────────────────────────────────
-
-def vector_search(query: str, top_k: int = TOP_K_EACH, filename_filter: str = None) -> List[Dict]:
+def vector_search(query: str, top_k: int = TOP_K_EACH, filename_filter: list = None) -> List[Dict]:
     """
-    Searches ChromaDB for semantically similar chunks.
-    Optional filename_filter restricts search to a specific document.
+    Searches ChromaDB. filename_filter is now a list of filenames.
     """
     model = get_embedding_model()
     client = get_chroma_client()
@@ -129,8 +122,13 @@ def vector_search(query: str, top_k: int = TOP_K_EACH, filename_filter: str = No
 
     query_embedding = model.encode([query]).tolist()[0]
 
-    # Build where clause for document filtering
-    where = {"filename": filename_filter} if filename_filter else None
+    # Build where clause for multi-document filtering
+    if filename_filter and len(filename_filter) == 1:
+        where = {"filename": filename_filter[0]}
+    elif filename_filter and len(filename_filter) > 1:
+        where = {"filename": {"$in": filename_filter}}
+    else:
+        where = None
 
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -228,12 +226,15 @@ def reciprocal_rank_fusion(
 # Main hybrid search function
 # ─────────────────────────────────────────────
 
-def hybrid_search(query: str, top_k: int = 20, filename_filter: str = None) -> List[Dict]:
+def hybrid_search(query: str, top_k: int = 20, filename_filter: list = None) -> List[Dict]:
     """
-    Hybrid BM25 + vector search with RRF fusion.
-    Optional filename_filter scopes search to a specific document.
+    Hybrid search. filename_filter is now a list of filenames.
     """
-    filter_msg = f" (filtered to: {filename_filter})" if filename_filter else " (all documents)"
+    if filename_filter:
+        filter_msg = f" (filtered to: {filename_filter})"
+    else:
+        filter_msg = " (all documents)"
+
     print(f"\n>> Hybrid search for: '{query}'{filter_msg}")
 
     bm25_results = bm25_search(query, top_k=TOP_K_EACH, filename_filter=filename_filter)
@@ -245,6 +246,6 @@ def hybrid_search(query: str, top_k: int = 20, filename_filter: str = None) -> L
     fused = reciprocal_rank_fusion(bm25_results, vector_results)
     top_results = fused[:top_k]
     both_count = sum(1 for r in top_results if r.get("found_by_both"))
-    print(f"   After RRF fusion: {len(top_results)} results ({both_count} found by both retrievers)")
+    print(f"   After RRF fusion: {len(top_results)} results ({both_count} found by both)")
 
     return top_results
