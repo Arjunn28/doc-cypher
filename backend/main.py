@@ -28,6 +28,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
+@app.on_event("startup")
+async def startup_event():
+    """Pre-load models into memory on server start."""
+    print(">> Pre-loading embedding model...")
+    from backend.ingest import get_embedding_model
+    get_embedding_model()
+    print(">> Pre-loading reranker model...")
+    from backend.reranker import get_reranker
+    get_reranker()
+    print(">> All models loaded. Server ready.")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -233,6 +233,24 @@ export default function App() {
         </span>
       </div>
 
+      {/* Persistence warning */}
+      <div style={{
+        background: "#eff6ff",
+        borderBottom: "1px solid #bfdbfe",
+        padding: "8px 1.5rem",
+        fontSize: "12.5px",
+        color: "#1d4ed8",
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+      }}>
+        <span>ℹ️</span>
+        <span>
+          <strong>Demo environment:</strong> Uploaded documents are stored temporarily.
+          They may be cleared when the server restarts. Re-upload if documents disappear.
+        </span>
+      </div>
+
       <div className="main">
         <aside className="sidebar">
 

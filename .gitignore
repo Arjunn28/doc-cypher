@@ -7,4 +7,6 @@ uploads/
 data/
 .DS_Store
 *.pdf
+frontend/node_modules/
+frontend/dist/
 EOF
