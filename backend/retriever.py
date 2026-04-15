@@ -13,7 +13,7 @@ import json
 import numpy as np
 from typing import List, Dict, Tuple
 from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer
 import chromadb
 
 from backend.ingest import (
