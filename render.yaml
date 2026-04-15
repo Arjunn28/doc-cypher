@@ -2,10 +2,10 @@ services:
   - type: web
     name: doccypher-backend
     runtime: python
-    # buildCommand: pip install fastapi uvicorn python-dotenv pymupdf chromadb==0.4.24 posthog==3.0.2 sentence-transformers rank-bm25 groq torch transformers python-multipart && python -m backend.download_models
-    # startCommand: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     buildCommand: pip install -r requirements.txt && python -m backend.download_models
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GROQ_API_KEY
         sync: false
+      - key: FASTEMBED_CACHE_PATH
+        value: /opt/render/project/src/.fastembed_cache

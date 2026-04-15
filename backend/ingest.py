@@ -1,5 +1,6 @@
-import tracemalloc
 import os
+os.environ.setdefault("FASTEMBED_CACHE_PATH", "/opt/render/project/src/.fastembed_cache")
+
 
 def log_memory(label):
     try:
