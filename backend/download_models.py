@@ -1,10 +1,14 @@
 # download_models.py
-# Pre-downloads models during Render's build step.
-# Prevents cold-start timeouts on first request.
+# Pre-downloads models during Render's BUILD step, not at runtime.
 
-print("Downloading embedding model...")
+import os
+
+print("Downloading fastembed embedding model...")
 from fastembed import TextEmbedding
-TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+# This downloads and caches the model to disk
+model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+# Force it to actually load by running a dummy embed
+list(model.embed(["warmup"]))
 print("Embedding model ready.")
 
 print("All models downloaded.")
