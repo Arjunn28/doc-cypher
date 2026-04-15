@@ -1,12 +1,27 @@
 import os
-os.environ["FASTEMBED_CACHE_PATH"] = "/opt/render/project/src/.fastembed_cache"
-
 import json
 import fitz
 import chromadb
-from fastembed import TextEmbedding
+import httpx
 from rank_bm25 import BM25Okapi
 from typing import List, Dict
+
+# ─────────────────────────────────────────────
+# Configuration
+# ─────────────────────────────────────────────
+
+CHROMA_PATH = os.path.join(os.path.dirname(__file__), "../data/chroma")
+UPLOAD_PATH = os.path.join(os.path.dirname(__file__), "../uploads")
+BM25_PATH = os.path.join(os.path.dirname(__file__), "../data/bm25")
+CHUNK_SIZE = 1500
+CHUNK_OVERLAP = 150
+
+GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
+GROQ_EMBED_MODEL = "nomic-embed-text-v1_5"
+
+# ─────────────────────────────────────────────
+# Memory logging
+# ─────────────────────────────────────────────
 
 def log_memory(label):
     try:
@@ -17,33 +32,32 @@ def log_memory(label):
         pass
 
 # ─────────────────────────────────────────────
-# Configuration
+# Groq Embeddings — no local model, no RAM cost
 # ─────────────────────────────────────────────
 
-CHROMA_PATH = os.path.join(os.path.dirname(__file__), "../data/chroma")
-UPLOAD_PATH = os.path.join(os.path.dirname(__file__), "../uploads")
-BM25_PATH = os.path.join(os.path.dirname(__file__), "../data/bm25")
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-CHUNK_SIZE = 1500
-CHUNK_OVERLAP = 150
+def get_embeddings(texts: List[str]) -> List[List[float]]:
+    """Calls Groq embedding API. No local model loaded, no RAM spike."""
+    headers = {
+        "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
+        "Content-Type": "application/json",
+    }
+    response = httpx.post(
+        GROQ_EMBED_URL,
+        headers=headers,
+        json={"model": GROQ_EMBED_MODEL, "input": texts},
+        timeout=60,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return [item["embedding"] for item in data["data"]]
 
 # ─────────────────────────────────────────────
-# Initialize components
+# ChromaDB
 # ─────────────────────────────────────────────
 
 def get_chroma_client():
     os.makedirs(CHROMA_PATH, exist_ok=True)
     return chromadb.PersistentClient(path=CHROMA_PATH)
-
-_embedding_model = None
-
-def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        print(">> Loading embedding model...")
-        _embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-        print(">> Embedding model loaded.")
-    return _embedding_model
 
 def get_collection(client, collection_name: str = "doccypher"):
     from chromadb.utils.embedding_functions import EmbeddingFunction
@@ -118,8 +132,7 @@ def chunk_pages(pages: List[Dict]) -> List[Dict]:
 # ─────────────────────────────────────────────
 
 def store_in_chroma(chunks: List[Dict], collection) -> None:
-    model = get_embedding_model()
-    batch_size = 50
+    batch_size = 20  # Groq API processes up to 20 texts per request
 
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i+batch_size]
@@ -134,8 +147,7 @@ def store_in_chroma(chunks: List[Dict], collection) -> None:
             for c in batch
         ]
 
-        batch_embeddings = list(model.embed(texts))
-        batch_embeddings = [e.tolist() for e in batch_embeddings]
+        batch_embeddings = get_embeddings(texts)
 
         existing = collection.get(ids=ids)
         existing_ids = set(existing["ids"])
