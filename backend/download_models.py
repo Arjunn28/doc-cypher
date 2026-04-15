@@ -1,15 +1,10 @@
 # download_models.py
-# Pre-downloads HuggingFace models during Render's build step.
-# This prevents cold-start timeouts when the first request arrives.
+# Pre-downloads models during Render's build step.
+# Prevents cold-start timeouts on first request.
 
 print("Downloading embedding model...")
-from sentence_transformers import SentenceTransformer
-SentenceTransformer("all-MiniLM-L6-v2")
+from fastembed import TextEmbedding
+TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
 print("Embedding model ready.")
-
-print("Downloading reranker model...")
-from sentence_transformers import CrossEncoder
-CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-print("Reranker model ready.")
 
 print("All models downloaded.")
