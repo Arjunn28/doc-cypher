@@ -17,49 +17,45 @@ function InfoPanel({ onClose }) {
       zIndex: 500, display: "flex", justifyContent: "flex-end"
     }} onClick={onClose}>
       <div style={{
-        width: "min(480px, 100%)", background: "white", height: "100%",
+        width: "min(440px, 100%)", background: "white", height: "100%",
         overflowY: "auto", padding: "2rem", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)"
       }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#1e2235" }}>What is DocCypher?</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "#6b7280" }}>✕</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.75rem" }}>
+          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>DocCypher</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "#9ca3af" }}>✕</button>
         </div>
 
         {[
           {
-            title: "Overview",
-            content: "DocCypher is an intelligent document Q&A system. Upload any PDF — research papers, reports, manuals — and ask questions in plain English. DocCypher finds the most relevant passages and generates a grounded answer with citations pointing to exact pages."
+            title: "What it does",
+            content: "Upload a PDF and ask questions in plain English. DocCypher retrieves the most relevant passages and returns a grounded answer with page-level citations. No hallucination from outside knowledge."
           },
           {
             title: "How to use",
-            content: "1. Upload one or more PDFs using the sidebar.\n2. Optionally select which document(s) to search — or leave it on 'All documents' to search across everything.\n3. Type your question or click a suggested query.\n4. The answer streams in real time with inline citations like [1] [2].\n5. Click any citation chip to preview the exact source text."
+            content: "1. Drop a PDF into the sidebar.\n2. Tick documents to scope your search, or leave all selected.\n3. Type a question or pick a suggestion.\n4. Citations like [1] [2] link back to exact pages."
           },
           {
-            title: "The retrieval pipeline",
-            content: "Most RAG systems use only vector (semantic) search. DocCypher uses hybrid retrieval:\n\n• BM25 keyword search catches exact matches — product codes, names, section numbers.\n• Vector search catches semantic similarity — 'car' matches 'automobile'.\n• Reciprocal Rank Fusion (RRF) combines both result lists using rank position, not raw scores.\n\nThis covers both failure modes simultaneously."
+            title: "Why hybrid retrieval",
+            content: "Most RAG systems use only vector search. DocCypher runs BM25 (keyword) and vector (semantic) search in parallel, then fuses results using Reciprocal Rank Fusion. BM25 catches exact matches. Vector catches meaning. Together they cover each other's blind spots."
           },
           {
-            title: "Cross-encoder reranking",
-            content: "After retrieval returns 20 candidate chunks, a cross-encoder model scores each chunk against the query jointly — seeing both together, not separately. This is significantly more accurate than the initial retrieval. Only the top 5 chunks after reranking are sent to the LLM. Result: answers grounded in the most precise passages, not just the most similar ones."
-          },
-          {
-            title: "Citation enforcement",
-            content: "Every answer must cite its sources inline. The LLM is prompted with numbered source chunks and strict rules to cite after every claim. Citations marked ★ were found by both BM25 and vector search independently — these carry the highest confidence."
-          },
-          {
-            title: "What to expect",
-            content: "• Answers are grounded — no hallucination from outside knowledge.\n• First load takes 10-20 seconds while models initialize.\n• Quality depends on PDF text clarity — scanned image PDFs without OCR won't work well.\n• For best results, ask specific questions rather than very broad ones."
+            title: "Citation confidence",
+            content: "Sources marked ★ were returned by both BM25 and vector search independently. These carry the highest confidence since two different retrieval methods agreed."
           },
           {
             title: "Tech stack",
-            content: "• Embeddings: sentence-transformers (all-MiniLM-L6-v2)\n• Vector DB: ChromaDB\n• Keyword search: BM25Okapi (rank_bm25)\n• Reranker: cross-encoder/ms-marco-MiniLM-L-6-v2\n• LLM: Llama 3.3 70B via Groq API\n• Backend: FastAPI\n• Frontend: React + Vite"
+            content: "Embeddings: HuggingFace all-MiniLM-L6-v2\nVector DB: ChromaDB\nKeyword search: BM25Okapi\nLLM: Llama 3.3 70B via Groq\nBackend: FastAPI\nFrontend: React + Vite"
+          },
+          {
+            title: "Heads up",
+            content: "This is a public demo. Avoid uploading sensitive documents. Uploaded files may be cleared on server restart."
           },
         ].map((section, i) => (
-          <div key={i} style={{ marginBottom: "1.5rem" }}>
-            <h3 style={{ fontSize: "13px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ca3af", marginBottom: "6px" }}>
+          <div key={i} style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: i < 5 ? "1px solid #f3f4f6" : "none" }}>
+            <h3 style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", marginBottom: "8px" }}>
               {section.title}
             </h3>
-            <p style={{ fontSize: "14px", color: "#374151", lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+            <p style={{ fontSize: "14px", color: "#374151", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
               {section.content}
             </p>
           </div>
@@ -225,16 +221,16 @@ export default function App() {
         </button>
       </nav>
 
-      <div className="safety-banner">
+      {/* <div className="safety-banner">
         <span className="safety-icon">⚠️</span>
         <span>
           <strong>Privacy notice:</strong> Do not upload personal or sensitive documents
           (passports, bank statements, medical records). Treat this as a public demo environment.
         </span>
-      </div>
+      </div> */}
 
       {/* Persistence warning */}
-      <div style={{
+      {/* <div style={{
         background: "#eff6ff",
         borderBottom: "1px solid #bfdbfe",
         padding: "8px 1.5rem",
@@ -249,14 +245,15 @@ export default function App() {
           <strong>Demo environment:</strong> Uploaded documents are stored temporarily.
           They may be cleared when the server restarts. Re-upload if documents disappear.
         </span>
-      </div>
+      </div> */}
 
       <div className="main">
         <aside className="sidebar">
 
           <div className={`status-pill ${isOnline ? "" : "offline"}`}>
             <div className={`status-dot ${isOnline ? "" : "offline"}`} />
-            {isOnline ? "Backend online" : "Backend offline"}
+            {/* {isOnline ? "ONLINE" : "Backend offline"} */}
+            {isOnline ? "● ONLINE" : "● OFFLINE"}
           </div>
 
           {/* Upload */}

@@ -15,7 +15,7 @@ body {
 
 /* ── Top nav ── */
 .topnav {
-  background: #1e2235;
+  background:#a61919;
   padding: 0 1.5rem;
   height: 54px;
   display: flex;
@@ -46,7 +46,7 @@ body {
 }
 
 /* ── Safety banner ── */
-.safety-banner {
+/* .safety-banner {
   background: #fefce8;
   border-bottom: 1px solid #fde68a;
   padding: 9px 1.5rem;
@@ -56,9 +56,9 @@ body {
   font-size: 13px;
   color: #78350f;
   line-height: 1.5;
-}
+} */
 
-.safety-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+/* .safety-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; } */
 
 /* ── Main layout ── */
 .main {
@@ -104,30 +104,26 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 3px 10px;
-  border-radius: 20px;
-  background: #dcfce7;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: #f0fdf4;
   color: #15803d;
   border: 1px solid #bbf7d0;
   margin-bottom: 0.75rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
 .status-pill.offline {
-  background: #fee2e2;
+  background: #fef2f2;
   color: #b91c1c;
   border-color: #fecaca;
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #22c55e;
-}
+.status-dot { display: none; }
 
-.status-dot.offline { background: #ef4444; }
 
 /* ── Upload area ── */
 .upload-zone {
