@@ -1,9 +1,8 @@
 # DocCypher: Hybrid RAG Document Intelligence System
 
-> A document Q&A system built on a hybrid retrieval pipeline: BM25 keyword search + dense vector search, fused with Reciprocal Rank Fusion and reranked by a cross-encoder model. Upload any PDF and interrogate it in plain English with grounded, citation-enforced answers.
+> A document Q&A system built on a hybrid retrieval pipeline: BM25 keyword search + dense vector search, fused with Reciprocal Rank Fusion. Upload any PDF and interrogate it in plain English with grounded, citation-enforced answers.
 
-**Live Demo:** <!-- add link here -->  
-**Backend API:** <!-- add link here -->  
+**Live Demo:** https://doc-cypher.vercel.app  
 **Author:** Arjun A N
 
 ---
@@ -16,7 +15,7 @@ DocCypher addresses this at every stage of the pipeline:
 
 - **Hybrid retrieval** covers two distinct failure modes simultaneously
 - **Reciprocal Rank Fusion** merges ranked lists without requiring score normalization across incompatible spaces
-- **Cross-encoder reranking** scores each candidate chunk against the query jointly, not independently
+- **Lightweight reranking** scores candidates using RRF-weighted keyword overlap, keeping memory usage minimal
 - **Citation enforcement** in the prompt means every claim in the answer is traceable to an exact page
 
 The result is a system where answers are grounded in the most precisely relevant passages, not just the most semantically similar ones.
@@ -24,10 +23,7 @@ The result is a system where answers are grounded in the most precisely relevant
 ---
 
 ## Project Preview
-
-<!-- Add screenshots from assets/ folder here -->
-
-![DocCypher Interface](assets/doccypher_main.png)
+![DocCypher Interface](assets/doc-cypher-overview.png)
 
 ---
 
@@ -39,29 +35,22 @@ Two retrievers run in parallel on every query:
 
 **BM25 (Okapi BM25)** is a sparse keyword retrieval method. It tokenizes both the query and the corpus and scores documents by term frequency and inverse document frequency. It excels at exact matches: product codes, author names, section numbers, specific terminology.
 
-**Vector search (ChromaDB + sentence-transformers)** encodes the query and all corpus chunks into a shared dense embedding space. Similarity is computed via cosine distance. It captures semantic relationships: "car" matches "automobile", "reduce latency" matches "improve response time".
+**Vector search (ChromaDB + HuggingFace Inference API)** encodes the query and all corpus chunks into a shared dense embedding space using `all-MiniLM-L6-v2`. Similarity is computed via cosine distance. It captures semantic relationships: "car" matches "automobile", "reduce latency" matches "improve response time".
 
 Neither retriever is sufficient alone. BM25 fails on paraphrase and semantic variation. Vector search fails on exact keyword requirements. Running both in parallel covers both failure modes simultaneously.
 
 ### Stage 2: Reciprocal Rank Fusion
 
 After retrieval, two ranked lists of up to 10 candidates each are merged using Reciprocal Rank Fusion (RRF):
-
-```
 score(d) = Σ 1 / (k + rank(d))
-```
 
 where `k = 60` is the empirically validated smoothing constant from the original RRF paper (Cormack, Clarke & Buettcher, 2009).
 
 RRF uses only rank position, not raw scores. This sidesteps the fundamental incompatibility between BM25's term frequency scores and cosine similarity scores, which exist on completely different scales. Chunks found by both retrievers independently receive additive RRF contributions and are flagged with a confidence marker in the UI.
 
-### Stage 3: Cross-encoder reranking
+### Stage 3: Reranking
 
-The fused candidate pool of up to 20 chunks is passed to a cross-encoder model (`cross-encoder/ms-marco-MiniLM-L-6-v2`) for reranking.
-
-The architectural difference matters here. Bi-encoder models (used for vector search) encode the query and document separately and compare their embeddings. This is fast but loses cross-attention signal between the two.
-
-A cross-encoder sees the query and candidate chunk concatenated in a single forward pass. It can attend across both simultaneously, producing a relevance score that captures fine-grained interaction between query tokens and document tokens. This is significantly more accurate than bi-encoder similarity at retrieval time.
+The fused candidate pool of up to 20 chunks is reranked using RRF-weighted keyword overlap scoring. Candidates are sorted by a combined score of query term overlap and RRF fusion score.
 
 Only the top 5 chunks after reranking are sent to the LLM. This keeps the context window tight and the answer grounded.
 
@@ -73,6 +62,8 @@ When a filename filter is active (user has scoped the query to specific document
 
 Answers stream token by token via FastAPI's `StreamingResponse`, so the response appears in real time rather than after a 5-10 second wait.
 
+![DocCypher Single PDF Output](assets/doc-cypher-single-pdf-output.png)
+
 ---
 
 ## Multi-document scoping
@@ -81,15 +72,17 @@ DocCypher supports querying across all ingested PDFs simultaneously or scoping t
 
 This means a user researching five papers can ask a question scoped to a single paper and get an answer grounded only in that document's content.
 
+![DocCypher Multi-PDF Scoping](assets/doc-cypher-multi-pdf-output.png)
+
 ---
 
 ## Document ingestion pipeline
 
 When a PDF is uploaded:
 
-1. `pdfplumber` extracts text page by page
-2. Text is chunked into overlapping windows (512 tokens, 50-token stride) to preserve context across chunk boundaries
-3. Each chunk is embedded using `all-MiniLM-L6-v2` and stored in ChromaDB with filename and page number metadata
+1. `PyMuPDF` extracts text page by page
+2. Text is chunked into overlapping windows (1500 characters, 150-character stride) to preserve context across chunk boundaries
+3. Each chunk is embedded via the HuggingFace Inference API (`all-MiniLM-L6-v2`) and stored in ChromaDB with filename and page number metadata
 4. The full tokenized corpus is serialized to disk as `corpus.json` for BM25 index reconstruction on server restart
 
 Chunk metadata (filename, page number, chunk index) is stored alongside embeddings, enabling precise citation to the exact source page.
@@ -100,19 +93,29 @@ Chunk metadata (filename, page number, chunk index) is stored alongside embeddin
 
 | Layer | Technology | Role |
 | --- | --- | --- |
-| Embeddings | sentence-transformers (all-MiniLM-L6-v2) | Dense chunk and query encoding |
+| Embeddings | HuggingFace Inference API (all-MiniLM-L6-v2) | Dense chunk and query encoding |
 | Vector store | ChromaDB | Persistent vector index with metadata filtering |
 | Keyword search | BM25Okapi (rank_bm25) | Sparse term-frequency retrieval |
-| Reranker | cross-encoder/ms-marco-MiniLM-L-6-v2 | Joint query-document relevance scoring |
+| Reranker | RRF-weighted keyword overlap | Lightweight relevance reranking, zero RAM cost |
 | Fusion | Reciprocal Rank Fusion | Score-agnostic ranked list merging |
 | LLM | Llama 3.3 70B (Groq API) | Citation-enforced answer generation |
 | Backend | FastAPI | REST API + streaming response |
 | Frontend | React + Vite | Real-time chat interface |
-| PDF parsing | pdfplumber | Text extraction with page-level metadata |
+| PDF parsing | PyMuPDF | Text extraction with page-level metadata |
 | Backend hosting | Render | Always-on API server |
 | Frontend hosting | Vercel | Global CDN deployment |
 
 **Total infrastructure cost: $0**
+
+---
+
+## A note on infrastructure constraints
+
+The original design used `sentence-transformers` and a cross-encoder reranker running locally. Both load fine on a development machine. On Render's free tier (512MB RAM), they OOM on the first request: PyTorch alone consumes over 1.5GB at initialization.
+
+The solution was to move embeddings to the HuggingFace Inference API, which runs the same `all-MiniLM-L6-v2` model remotely. The backend never loads a local ML model. RAM usage stays under 200MB at peak. The reranker was replaced with a lightweight RRF-weighted keyword overlap scorer, which adds no memory overhead and performs well enough for a demo workload.
+
+Same retrieval quality. Zero local model weight. Fits on free hosting.
 
 ---
 
@@ -132,14 +135,13 @@ pip install -r requirements.txt
 
 # 3. Configure environment variables
 cp .env.example .env
-# Add your GROQ_API_KEY to .env
+# Add your GROQ_API_KEY and HF_TOKEN to .env
 ```
 
 `.env` file:
 
-```
 GROQ_API_KEY=your_groq_api_key
-```
+HF_TOKEN=your_huggingface_token
 
 ```bash
 # 4. Start the backend
@@ -160,7 +162,7 @@ Open `http://localhost:8000/docs` for the auto-generated API documentation.
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| POST | `/ingest` | Upload and ingest a PDF into the retrieval index |
+| POST | `/upload` | Upload and ingest a PDF into the retrieval index |
 | GET | `/stream` | Stream an answer with citations (supports `filename_filter`) |
 | GET | `/documents` | List all ingested documents with chunk counts |
 | DELETE | `/documents/{filename}` | Remove a document from the index |
@@ -169,20 +171,18 @@ Open `http://localhost:8000/docs` for the auto-generated API documentation.
 
 ## Project structure
 
-```
 doc-cypher/
 ├── backend/
 │   ├── main.py           # FastAPI app, routing, streaming endpoint
 │   ├── ingest.py         # PDF parsing, chunking, embedding, indexing
 │   ├── retriever.py      # BM25 search, vector search, RRF fusion
-│   ├── reranker.py       # Cross-encoder reranking, citation formatting
+│   ├── reranker.py       # Reranking, citation formatting
 │   └── query_engine.py   # Pipeline orchestration, prompt builder, LLM streaming
 ├── frontend/
 │   └── src/              # React + Vite interface
 ├── assets/               # Screenshots for README
 ├── requirements.txt
 └── render.yaml
-```
 
 ---
 
@@ -192,7 +192,6 @@ doc-cypher/
 | --- | --- |
 | Single vector similarity search | Hybrid BM25 + vector retrieval in parallel |
 | Raw similarity scores merged directly | Reciprocal Rank Fusion on ranked positions |
-| Bi-encoder scoring throughout | Cross-encoder reranking on top candidates |
 | LLM may answer from outside knowledge | Citation enforcement via prompt + source injection |
 | No document scoping | Per-query filename filter applied at retrieval + prompt layer |
 | Answer returned after full generation | Token-by-token streaming via SSE |
@@ -203,8 +202,8 @@ doc-cypher/
 ## Limitations
 
 - Scanned PDFs without embedded text (image-only PDFs) will not extract correctly without an OCR preprocessing step
-- First load takes 10-20 seconds while the cross-encoder model initializes
 - Retrieval quality is bounded by chunk quality: very short or fragmented PDF text produces noisy chunks
+- This is a public demo environment. Avoid uploading sensitive documents. Files may be cleared on server restart.
 
 ---
 
