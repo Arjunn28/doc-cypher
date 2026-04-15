@@ -120,7 +120,9 @@ def vector_search(query: str, top_k: int = TOP_K_EACH, filename_filter: list = N
     if collection.count() == 0:
         return []
 
-    query_embedding = model.encode([query]).tolist()[0]
+    # query_embedding = model.encode([query]).tolist()[0]
+    query_embedding = list(model.embed([query]))[0].tolist()
+
 
     # Build where clause for multi-document filtering
     if filename_filter and len(filename_filter) == 1:

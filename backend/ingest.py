@@ -11,7 +11,8 @@ import hashlib
 import fitz  # PyMuPDF — best PDF parser available, handles complex layouts
 import chromadb
 from chromadb.utils import embedding_functions
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from rank_bm25 import BM25Okapi
 from typing import List, Dict
 
@@ -31,7 +32,8 @@ BM25_PATH = os.path.join(os.path.dirname(__file__), "../data/bm25")
 # The embedding model — free, runs locally, no API key needed.
 # all-MiniLM-L6-v2 is the industry standard for RAG embeddings:
 # fast, small (80MB), and produces 384-dimensional embeddings.
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+# EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 
 # Chunk size in characters. 1000 chars ≈ 200-250 tokens.
 # Too small = not enough context. Too large = too much noise.
@@ -54,13 +56,23 @@ def get_chroma_client():
 #     """Loads the sentence transformer model."""
 #     return SentenceTransformer(EMBEDDING_MODEL)
 
+# _embedding_model = None
+
+# def get_embedding_model():
+#     global _embedding_model
+#     if _embedding_model is None:
+#         print(">> Loading embedding model...")
+#         _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+#         print(">> Embedding model loaded.")
+#     return _embedding_model
+
 _embedding_model = None
 
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
         print(">> Loading embedding model...")
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+        _embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
         print(">> Embedding model loaded.")
     return _embedding_model
 
@@ -177,7 +189,11 @@ def store_in_chroma(chunks: List[Dict], collection) -> None:
     ]
 
     print(f"Embedding {len(texts)} chunks (this takes 10-30 seconds)...")
-    embeddings = model.encode(texts, show_progress_bar=True).tolist()
+    # embeddings = model.encode(texts, show_progress_bar=True).tolist()
+
+    # AFTER
+    embeddings = list(model.embed(texts))  # returns a generator, convert to list
+    embeddings = [e.tolist() for e in embeddings]
 
     # Add to ChromaDB in batches to avoid memory issues with large PDFs
     batch_size = 100
