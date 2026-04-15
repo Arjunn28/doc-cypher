@@ -211,8 +211,8 @@ export default function App() {
         <button
           onClick={() => setShowInfo(true)}
           style={{
-            padding: "6px 16px", background: "rgba(255,255,255,0.1)",
-            color: "white", border: "1px solid rgba(255,255,255,0.2)",
+            padding: "6px 16px", background: "rgba(255, 255, 255, 0.1)",
+            color: "white", border: "1px solid rgba(255, 255, 255, 0.2)",
             borderRadius: "20px", fontSize: "13px", cursor: "pointer",
             fontFamily: "inherit", fontWeight: 500,
           }}
