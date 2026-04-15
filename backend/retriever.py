@@ -19,27 +19,25 @@ from backend.ingest import (
 TOP_K_EACH = 10
 RRF_K = 60
 
-GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
-GROQ_EMBED_MODEL = "nomic-embed-text-v1_5"
+# GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
+# GROQ_EMBED_MODEL = "nomic-embed-text-v1_5"
+
 
 # ─────────────────────────────────────────────
-# Groq Query Embedding
+# Hugging Face Query Embedding
 # ─────────────────────────────────────────────
+
+HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 def get_query_embedding(query: str) -> List[float]:
-    """Embeds a single query string via Groq API."""
-    headers = {
-        "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
-        "Content-Type": "application/json",
-    }
+    """Embeds query via HuggingFace Inference API."""
     response = httpx.post(
-        GROQ_EMBED_URL,
-        headers=headers,
-        json={"model": GROQ_EMBED_MODEL, "input": [query]},
+        HF_EMBED_URL,
+        json={"inputs": [query], "options": {"wait_for_model": True}},
         timeout=30,
     )
     response.raise_for_status()
-    return response.json()["data"][0]["embedding"]
+    return response.json()[0]
 
 # ─────────────────────────────────────────────
 # Load BM25 index from disk

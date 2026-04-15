@@ -16,8 +16,9 @@ BM25_PATH = os.path.join(os.path.dirname(__file__), "../data/bm25")
 CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 150
 
-GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
-GROQ_EMBED_MODEL = "nomic-embed-text-v1_5"
+# GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
+# GROQ_EMBED_MODEL = "nomic-embed-text-v1_5"
+HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 # ─────────────────────────────────────────────
 # Memory logging
@@ -35,21 +36,34 @@ def log_memory(label):
 # Groq Embeddings — no local model, no RAM cost
 # ─────────────────────────────────────────────
 
+# def get_embeddings(texts: List[str]) -> List[List[float]]:
+#     """Calls Groq embedding API. No local model loaded, no RAM spike."""
+#     headers = {
+#         "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
+#         "Content-Type": "application/json",
+#     }
+#     response = httpx.post(
+#         GROQ_EMBED_URL,
+#         headers=headers,
+#         json={"model": GROQ_EMBED_MODEL, "input": texts},
+#         timeout=60,
+#     )
+#     response.raise_for_status()
+#     data = response.json()
+#     return [item["embedding"] for item in data["data"]]
+
+# ─────────────────────────────────────────────
+# Hugging Face Embeddings — no local model, no RAM cost
+# ─────────────────────────────────────────────
 def get_embeddings(texts: List[str]) -> List[List[float]]:
-    """Calls Groq embedding API. No local model loaded, no RAM spike."""
-    headers = {
-        "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
-        "Content-Type": "application/json",
-    }
+    """Calls HuggingFace Inference API. No local model, no RAM cost."""
     response = httpx.post(
-        GROQ_EMBED_URL,
-        headers=headers,
-        json={"model": GROQ_EMBED_MODEL, "input": texts},
+        HF_EMBED_URL,
+        json={"inputs": texts, "options": {"wait_for_model": True}},
         timeout=60,
     )
     response.raise_for_status()
-    data = response.json()
-    return [item["embedding"] for item in data["data"]]
+    return response.json()
 
 # ─────────────────────────────────────────────
 # ChromaDB
