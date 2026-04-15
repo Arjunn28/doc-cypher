@@ -19,15 +19,7 @@ from backend.ingest import (
 TOP_K_EACH = 10
 RRF_K = 60
 
-# GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
-# GROQ_EMBED_MODEL = "nomic-embed-text-v1_5"
 
-
-# ─────────────────────────────────────────────
-# Hugging Face Query Embedding
-# ─────────────────────────────────────────────
-
-# HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 
 

@@ -16,10 +16,7 @@ BM25_PATH = os.path.join(os.path.dirname(__file__), "../data/bm25")
 CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 150
 
-# GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
-# GROQ_EMBED_MODEL = "nomic-embed-text-v1_5"
-HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
-
+HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 # ─────────────────────────────────────────────
 # Memory logging
 # ─────────────────────────────────────────────
