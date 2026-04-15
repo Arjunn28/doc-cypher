@@ -50,9 +50,19 @@ def get_chroma_client():
     os.makedirs(CHROMA_PATH, exist_ok=True)
     return chromadb.PersistentClient(path=CHROMA_PATH)
 
+# def get_embedding_model():
+#     """Loads the sentence transformer model."""
+#     return SentenceTransformer(EMBEDDING_MODEL)
+
+_embedding_model = None
+
 def get_embedding_model():
-    """Loads the sentence transformer model."""
-    return SentenceTransformer(EMBEDDING_MODEL)
+    global _embedding_model
+    if _embedding_model is None:
+        print(">> Loading embedding model...")
+        _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+        print(">> Embedding model loaded.")
+    return _embedding_model
 
 def get_collection(client, collection_name: str = "doccypher"):
     """
