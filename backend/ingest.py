@@ -145,8 +145,42 @@ def chunk_pages(pages: List[Dict]) -> List[Dict]:
 # Step 3: Store in ChromaDB
 # ─────────────────────────────────────────────
 
+# def store_in_chroma(chunks: List[Dict], collection) -> None:
+#     batch_size = 20  # Groq API processes up to 20 texts per request
+
+#     for i in range(0, len(chunks), batch_size):
+#         batch = chunks[i:i+batch_size]
+#         texts = [c["text"] for c in batch]
+#         ids = [c["chunk_id"] for c in batch]
+#         metadatas = [
+#             {
+#                 "filename": c["filename"],
+#                 "page_num": c["page_num"],
+#                 "chunk_index": c["chunk_index"],
+#             }
+#             for c in batch
+#         ]
+
+#         batch_embeddings = get_embeddings(texts)
+
+#         existing = collection.get(ids=ids)
+#         existing_ids = set(existing["ids"])
+#         new_indices = [j for j, id_ in enumerate(ids) if id_ not in existing_ids]
+
+#         if new_indices:
+#             collection.add(
+#                 ids=[ids[j] for j in new_indices],
+#                 documents=[texts[j] for j in new_indices],
+#                 embeddings=[batch_embeddings[j] for j in new_indices],
+#                 metadatas=[metadatas[j] for j in new_indices],
+#             )
+
+#         print(f"  Stored batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1}")
+
+#     print(f"Stored {len(chunks)} chunks in ChromaDB")
+
 def store_in_chroma(chunks: List[Dict], collection) -> None:
-    batch_size = 20  # Groq API processes up to 20 texts per request
+    batch_size = 20
 
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i+batch_size]
@@ -161,7 +195,12 @@ def store_in_chroma(chunks: List[Dict], collection) -> None:
             for c in batch
         ]
 
-        batch_embeddings = get_embeddings(texts)
+        try:
+            batch_embeddings = get_embeddings(texts)
+            print(f"  Embeddings received, type: {type(batch_embeddings)}, len: {len(batch_embeddings)}")
+        except Exception as e:
+            print(f"  ERROR getting embeddings: {e}")
+            raise
 
         existing = collection.get(ids=ids)
         existing_ids = set(existing["ids"])
