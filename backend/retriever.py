@@ -27,7 +27,9 @@ RRF_K = 60
 # Hugging Face Query Embedding
 # ─────────────────────────────────────────────
 
-HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+# HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+
 
 def get_query_embedding(query: str) -> List[float]:
     """Embeds query via HuggingFace Inference API."""
