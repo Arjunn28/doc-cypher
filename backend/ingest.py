@@ -1,3 +1,14 @@
+import tracemalloc
+import os
+
+def log_memory(label):
+    try:
+        import resource
+        mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        print(f"[MEM] {label}: {mem / 1024:.1f} MB")
+    except:
+        pass
+
 # ingest.py
 # The ingestion pipeline — the entry point for every PDF uploaded to DocCypher.
 # Takes a raw PDF, extracts text page by page, splits into overlapping chunks,
@@ -37,11 +48,13 @@ EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 
 # Chunk size in characters. 1000 chars ≈ 200-250 tokens.
 # Too small = not enough context. Too large = too much noise.
-CHUNK_SIZE = 1000
+# CHUNK_SIZE = 1000
+CHUNK_SIZE = 1500
 
 # Overlap between consecutive chunks.
 # Why overlap? So sentences at chunk boundaries don't lose context.
-CHUNK_OVERLAP = 200
+# CHUNK_OVERLAP = 200
+CHUNK_OVERLAP = 150
 
 # ─────────────────────────────────────────────
 # Initialize components
@@ -76,14 +89,30 @@ def get_embedding_model():
         print(">> Embedding model loaded.")
     return _embedding_model
 
+# def get_collection(client, collection_name: str = "doccypher"):
+#     """
+#     Gets or creates the ChromaDB collection.
+#     A collection is like a table — stores embeddings + metadata together.
+#     """
+#     return client.get_or_create_collection(
+#         name=collection_name,
+#         metadata={"hnsw:space": "cosine"}  # cosine similarity for text
+#     )
+
+# AFTER
 def get_collection(client, collection_name: str = "doccypher"):
-    """
-    Gets or creates the ChromaDB collection.
-    A collection is like a table — stores embeddings + metadata together.
-    """
+    from chromadb.utils.embedding_functions import EmbeddingFunction
+    
+    # Pass a no-op embedding function so ChromaDB doesn't load
+    # its own onnxruntime model (saves ~400MB RAM)
+    class NoOpEmbeddingFunction(EmbeddingFunction):
+        def __call__(self, input):
+            return []
+    
     return client.get_or_create_collection(
         name=collection_name,
-        metadata={"hnsw:space": "cosine"}  # cosine similarity for text
+        metadata={"hnsw:space": "cosine"},
+        embedding_function=NoOpEmbeddingFunction(),
     )
 
 # ─────────────────────────────────────────────
@@ -164,63 +193,102 @@ def chunk_pages(pages: List[Dict]) -> List[Dict]:
 # ─────────────────────────────────────────────
 
 def store_in_chroma(chunks: List[Dict], collection) -> None:
-    """
-    Embeds each chunk and stores in ChromaDB.
-    
-    ChromaDB stores:
-    - The embedding vector (for similarity search)
-    - The original text (returned with results)
-    - Metadata (filename, page, chunk index — for citations)
-    
-    Why ChromaDB? It's free, runs locally, persists to disk,
-    and has a simple Python API. Production alternative: Pinecone, Weaviate.
-    """
     model = get_embedding_model()
-
-    texts = [chunk["text"] for chunk in chunks]
-    ids = [chunk["chunk_id"] for chunk in chunks]
-    metadatas = [
-        {
-            "filename": chunk["filename"],
-            "page_num": chunk["page_num"],
-            "chunk_index": chunk["chunk_index"],
-        }
-        for chunk in chunks
-    ]
-
-    print(f"Embedding {len(texts)} chunks (this takes 10-30 seconds)...")
-    # embeddings = model.encode(texts, show_progress_bar=True).tolist()
-
-    # AFTER
-    embeddings = list(model.embed(texts))  # returns a generator, convert to list
-    embeddings = [e.tolist() for e in embeddings]
-
-    # Add to ChromaDB in batches to avoid memory issues with large PDFs
-    batch_size = 100
+    
+    batch_size = 50  # smaller batches = lower peak RAM
+    
     for i in range(0, len(chunks), batch_size):
-        batch_ids = ids[i:i+batch_size]
-        batch_texts = texts[i:i+batch_size]
-        batch_embeddings = embeddings[i:i+batch_size]
-        batch_metadatas = metadatas[i:i+batch_size]
-
-        # Check for existing IDs to avoid duplicates
-        existing = collection.get(ids=batch_ids)
-        existing_ids = set(existing["ids"])
-        
-        new_indices = [
-            j for j, id_ in enumerate(batch_ids)
-            if id_ not in existing_ids
+        batch = chunks[i:i+batch_size]
+        texts = [c["text"] for c in batch]
+        ids = [c["chunk_id"] for c in batch]
+        metadatas = [
+            {
+                "filename": c["filename"],
+                "page_num": c["page_num"],
+                "chunk_index": c["chunk_index"],
+            }
+            for c in batch
         ]
+
+        # Embed only this batch — never hold all embeddings in RAM at once
+        batch_embeddings = list(model.embed(texts))
+        batch_embeddings = [e.tolist() for e in batch_embeddings]
+
+        # Skip duplicates
+        existing = collection.get(ids=ids)
+        existing_ids = set(existing["ids"])
+        new_indices = [j for j, id_ in enumerate(ids) if id_ not in existing_ids]
 
         if new_indices:
             collection.add(
-                ids=[batch_ids[j] for j in new_indices],
-                documents=[batch_texts[j] for j in new_indices],
+                ids=[ids[j] for j in new_indices],
+                documents=[texts[j] for j in new_indices],
                 embeddings=[batch_embeddings[j] for j in new_indices],
-                metadatas=[batch_metadatas[j] for j in new_indices],
+                metadatas=[metadatas[j] for j in new_indices],
             )
-
+        
+        print(f"  Stored batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1}")
+    
     print(f"Stored {len(chunks)} chunks in ChromaDB")
+
+# def store_in_chroma(chunks: List[Dict], collection) -> None:
+#     """
+#     Embeds each chunk and stores in ChromaDB.
+    
+#     ChromaDB stores:
+#     - The embedding vector (for similarity search)
+#     - The original text (returned with results)
+#     - Metadata (filename, page, chunk index — for citations)
+    
+#     Why ChromaDB? It's free, runs locally, persists to disk,
+#     and has a simple Python API. Production alternative: Pinecone, Weaviate.
+#     """
+#     model = get_embedding_model()
+
+#     texts = [chunk["text"] for chunk in chunks]
+#     ids = [chunk["chunk_id"] for chunk in chunks]
+#     metadatas = [
+#         {
+#             "filename": chunk["filename"],
+#             "page_num": chunk["page_num"],
+#             "chunk_index": chunk["chunk_index"],
+#         }
+#         for chunk in chunks
+#     ]
+
+#     print(f"Embedding {len(texts)} chunks (this takes 10-30 seconds)...")
+#     # embeddings = model.encode(texts, show_progress_bar=True).tolist()
+
+#     # AFTER
+#     embeddings = list(model.embed(texts))  # returns a generator, convert to list
+#     embeddings = [e.tolist() for e in embeddings]
+
+#     # Add to ChromaDB in batches to avoid memory issues with large PDFs
+#     batch_size = 100
+#     for i in range(0, len(chunks), batch_size):
+#         batch_ids = ids[i:i+batch_size]
+#         batch_texts = texts[i:i+batch_size]
+#         batch_embeddings = embeddings[i:i+batch_size]
+#         batch_metadatas = metadatas[i:i+batch_size]
+
+#         # Check for existing IDs to avoid duplicates
+#         existing = collection.get(ids=batch_ids)
+#         existing_ids = set(existing["ids"])
+        
+#         new_indices = [
+#             j for j, id_ in enumerate(batch_ids)
+#             if id_ not in existing_ids
+#         ]
+
+#         if new_indices:
+#             collection.add(
+#                 ids=[batch_ids[j] for j in new_indices],
+#                 documents=[batch_texts[j] for j in new_indices],
+#                 embeddings=[batch_embeddings[j] for j in new_indices],
+#                 metadatas=[batch_metadatas[j] for j in new_indices],
+#             )
+
+#     print(f"Stored {len(chunks)} chunks in ChromaDB")
 
 # ─────────────────────────────────────────────
 # Step 4: Store in BM25 (keyword search)
@@ -282,34 +350,74 @@ def build_bm25_index(chunks: List[Dict]) -> None:
 # Main ingestion function — called by the API
 # ─────────────────────────────────────────────
 
-def ingest_pdf(filepath: str) -> Dict:
-    """
-    Full ingestion pipeline for a single PDF.
-    Called by the FastAPI endpoint when a user uploads a document.
+# def ingest_pdf(filepath: str) -> Dict:
+#     """
+#     Full ingestion pipeline for a single PDF.
+#     Called by the FastAPI endpoint when a user uploads a document.
     
-    Returns a summary of what was ingested.
-    """
+#     Returns a summary of what was ingested.
+#     """
+#     print(f"\n{'='*50}")
+#     print(f"INGESTING: {os.path.basename(filepath)}")
+#     print(f"{'='*50}\n")
+
+#     # Step 1: Parse
+#     pages = parse_pdf(filepath)
+#     if not pages:
+#         return {"error": "No readable text found in PDF"}
+
+#     # Step 2: Chunk
+#     chunks = chunk_pages(pages)
+#     if not chunks:
+#         return {"error": "Could not create chunks from PDF"}
+
+#     # Step 3: Store in ChromaDB
+#     client = get_chroma_client()
+#     collection = get_collection(client)
+#     store_in_chroma(chunks, collection)
+
+#     # Step 4: Build BM25 index
+#     build_bm25_index(chunks)
+
+#     result = {
+#         "filename": os.path.basename(filepath),
+#         "pages_parsed": len(pages),
+#         "chunks_created": len(chunks),
+#         "status": "success",
+#     }
+
+#     print(f"\nIngestion complete: {result}")
+#     return result
+
+
+def ingest_pdf(filepath: str) -> Dict:
     print(f"\n{'='*50}")
     print(f"INGESTING: {os.path.basename(filepath)}")
     print(f"{'='*50}\n")
 
-    # Step 1: Parse
+    log_memory("start")
+
     pages = parse_pdf(filepath)
+    log_memory("after parse_pdf")
     if not pages:
         return {"error": "No readable text found in PDF"}
 
-    # Step 2: Chunk
     chunks = chunk_pages(pages)
+    log_memory("after chunk_pages")
     if not chunks:
         return {"error": "Could not create chunks from PDF"}
 
-    # Step 3: Store in ChromaDB
     client = get_chroma_client()
-    collection = get_collection(client)
-    store_in_chroma(chunks, collection)
+    log_memory("after get_chroma_client")
 
-    # Step 4: Build BM25 index
+    collection = get_collection(client)
+    log_memory("after get_collection")
+
+    store_in_chroma(chunks, collection)
+    log_memory("after store_in_chroma")
+
     build_bm25_index(chunks)
+    log_memory("after build_bm25_index")
 
     result = {
         "filename": os.path.basename(filepath),
