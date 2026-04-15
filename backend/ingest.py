@@ -5,6 +5,7 @@ import chromadb
 import httpx
 from rank_bm25 import BM25Okapi
 from typing import List, Dict
+from huggingface_hub import InferenceClient
 
 # ─────────────────────────────────────────────
 # Configuration
@@ -16,7 +17,7 @@ BM25_PATH = os.path.join(os.path.dirname(__file__), "../data/bm25")
 CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 150
 
-HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+# HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 # ─────────────────────────────────────────────
 # Memory logging
 # ─────────────────────────────────────────────
@@ -52,15 +53,27 @@ def log_memory(label):
 # ─────────────────────────────────────────────
 # Hugging Face Embeddings — no local model, no RAM cost
 # ─────────────────────────────────────────────
+# def get_embeddings(texts: List[str]) -> List[List[float]]:
+#     """Calls HuggingFace Inference API. No local model, no RAM cost."""
+#     response = httpx.post(
+#         HF_EMBED_URL,
+#         json={"inputs": texts, "options": {"wait_for_model": True}},
+#         timeout=60,
+#     )
+#     response.raise_for_status()
+#     return response.json()
+
+# from huggingface_hub import InferenceClient
+
+HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 def get_embeddings(texts: List[str]) -> List[List[float]]:
-    """Calls HuggingFace Inference API. No local model, no RAM cost."""
-    response = httpx.post(
-        HF_EMBED_URL,
-        json={"inputs": texts, "options": {"wait_for_model": True}},
-        timeout=60,
+    client = InferenceClient(
+        provider="hf-inference",
+        api_key=os.getenv("HF_TOKEN"),
     )
-    response.raise_for_status()
-    return response.json()
+    result = client.feature_extraction(texts, model=HF_MODEL)
+    # result is a numpy array of shape (n_texts, embedding_dim)
+    return result.tolist()
 
 # ─────────────────────────────────────────────
 # ChromaDB

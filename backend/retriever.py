@@ -1,10 +1,11 @@
 import os
 import json
-import httpx
 import numpy as np
 from typing import List, Dict, Tuple
 from rank_bm25 import BM25Okapi
 import chromadb
+from huggingface_hub import InferenceClient
+
 
 from backend.ingest import (
     get_chroma_client,
@@ -20,18 +21,28 @@ TOP_K_EACH = 10
 RRF_K = 60
 
 
-HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+# HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 
+
+# def get_query_embedding(query: str) -> List[float]:
+#     """Embeds query via HuggingFace Inference API."""
+#     response = httpx.post(
+#         HF_EMBED_URL,
+#         json={"inputs": [query], "options": {"wait_for_model": True}},
+#         timeout=30,
+#     )
+#     response.raise_for_status()
+#     return response.json()[0]
+
+HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 def get_query_embedding(query: str) -> List[float]:
-    """Embeds query via HuggingFace Inference API."""
-    response = httpx.post(
-        HF_EMBED_URL,
-        json={"inputs": [query], "options": {"wait_for_model": True}},
-        timeout=30,
+    client = InferenceClient(
+        provider="hf-inference",
+        api_key=os.getenv("HF_TOKEN"),
     )
-    response.raise_for_status()
-    return response.json()[0]
+    result = client.feature_extraction(query, model=HF_MODEL)
+    return result.tolist()
 
 # ─────────────────────────────────────────────
 # Load BM25 index from disk
