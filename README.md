@@ -141,6 +141,7 @@ cp .env.example .env
 `.env` file:
 
 GROQ_API_KEY=your_groq_api_key
+
 HF_TOKEN=your_huggingface_token
 
 ```bash
@@ -167,22 +168,6 @@ Open `http://localhost:8000/docs` for the auto-generated API documentation.
 | GET | `/documents` | List all ingested documents with chunk counts |
 | DELETE | `/documents/{filename}` | Remove a document from the index |
 
----
-
-## Project structure
-
-doc-cypher/
-├── backend/
-│   ├── main.py           # FastAPI app, routing, streaming endpoint
-│   ├── ingest.py         # PDF parsing, chunking, embedding, indexing
-│   ├── retriever.py      # BM25 search, vector search, RRF fusion
-│   ├── reranker.py       # Reranking, citation formatting
-│   └── query_engine.py   # Pipeline orchestration, prompt builder, LLM streaming
-├── frontend/
-│   └── src/              # React + Vite interface
-├── assets/               # Screenshots for README
-├── requirements.txt
-└── render.yaml
 
 ---
 
@@ -210,7 +195,7 @@ doc-cypher/
 ## Author
 
 **Arjun A N**  
-[GitHub](https://github.com/Arjunn28) · [Live Demo](#) · [LinkedIn](https://www.linkedin.com/in/arjun-an/)
+[GitHub](https://github.com/Arjunn28) · [Live Demo](https://doc-cypher.vercel.app/) · [LinkedIn](https://www.linkedin.com/in/arjun-an/)
 
 ---
 
