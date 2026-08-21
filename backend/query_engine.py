@@ -149,22 +149,29 @@ def stream_answer(query: str, filename_filter: list = None) -> Generator[str, No
 
     print(f"\n>> Streaming from LLM...")
 
-    stream = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,  # low temperature for factual, consistent answers
-        max_tokens=1024,
-        stream=True,      # this is what enables word-by-word streaming
-    )
+    try:
+        stream = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,  # low temperature for factual, consistent answers
+            max_tokens=1024,
+            stream=True,      # this is what enables word-by-word streaming
+        )
 
-    # Stream tokens as they arrive
-    for chunk in stream:
-        delta = chunk.choices[0].delta
-        if delta and delta.content:
-            yield json.dumps({
-                "type": "token",
-                "content": delta.content
-            }) + "\n"
+        # Stream tokens as they arrive
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                yield json.dumps({
+                    "type": "token",
+                    "content": delta.content
+                }) + "\n"
+    except Exception as e:
+        yield json.dumps({
+            "type": "error",
+            "message": f"Generation failed: {str(e)}"
+        }) + "\n"
+        return
 
     # Signal completion
     yield json.dumps({"type": "done"}) + "\n"
