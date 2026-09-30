@@ -44,7 +44,8 @@ function InfoPanel({ onClose }) {
           },
           {
             title: "Tech stack",
-            content: "Embeddings: HuggingFace all-MiniLM-L6-v2\nVector DB: ChromaDB\nKeyword search: BM25Okapi\nLLM: Llama 3.3 70B via Groq\nBackend: FastAPI\nFrontend: React + Vite"
+            // content: "Embeddings: HuggingFace all-MiniLM-L6-v2\nVector DB: ChromaDB\nKeyword search: BM25Okapi\nLLM: Llama 3.3 70B via Groq\nBackend: FastAPI\nFrontend: React + Vite"
+            content: "Embeddings: HuggingFace all-MiniLM-L6-v2\nVector DB: ChromaDB\nKeyword search: BM25Okapi\nReranking: lexical keyword overlap + RRF score\nLLM: GPT-OSS 120B via Groq\nBackend: FastAPI\nFrontend: React + Vite"
           },
           {
             title: "Heads up",
@@ -206,7 +207,8 @@ export default function App() {
       <nav className="topnav">
         <div className="nav-brand">
           <h1>DocCypher</h1>
-          <span>Hybrid RAG · BM25 + Vector · Cross-encoder Reranking</span>
+          {/* <span>Hybrid RAG · BM25 + Vector · Cross-encoder Reranking</span> */}
+          <span>Hybrid RAG · BM25 + Vector · Lexical Reranking</span>
         </div>
         <button
           onClick={() => setShowInfo(true)}
@@ -464,7 +466,8 @@ export default function App() {
               <div className="retrieval-tags">
                 <span className="rtag">Hybrid BM25 + Vector</span>
                 <span className="rtag">RRF fusion</span>
-                <span className="rtag green">Cross-encoder reranked</span>
+                {/* <span className="rtag green">Cross-encoder reranked</span> */}
+                <span className="rtag green">Lexical reranked</span>
                 <span className="rtag green">
                   {citations.filter(c => c.found_by_both).length} found by both retrievers
                 </span>
