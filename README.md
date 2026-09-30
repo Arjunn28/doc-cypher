@@ -98,7 +98,7 @@ Chunk metadata (filename, page number, chunk index) is stored alongside embeddin
 | Keyword search | BM25Okapi (rank_bm25) | Sparse term-frequency retrieval |
 | Reranker | RRF-weighted keyword overlap | Lightweight relevance reranking, zero RAM cost |
 | Fusion | Reciprocal Rank Fusion | Score-agnostic ranked list merging |
-| LLM | Llama 3.3 70B (Groq API) | Citation-enforced answer generation |
+| LLM | GPT-OSS 120B (Groq API) | Citation-enforced answer generation |
 | Backend | FastAPI | REST API + streaming response |
 | Frontend | React + Vite | Real-time chat interface |
 | PDF parsing | PyMuPDF | Text extraction with page-level metadata |
@@ -115,7 +115,7 @@ The original design used `sentence-transformers` and a cross-encoder reranker ru
 
 The solution was to move embeddings to the HuggingFace Inference API, which runs the same `all-MiniLM-L6-v2` model remotely. The backend never loads a local ML model. RAM usage stays under 200MB at peak. The reranker was replaced with a lightweight RRF-weighted keyword overlap scorer, which adds no memory overhead and performs well enough for a demo workload.
 
-Same retrieval quality. Zero local model weight. Fits on free hosting.
+Zero local model weight. Fits on free hosting. 
 
 ---
 
