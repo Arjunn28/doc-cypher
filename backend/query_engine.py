@@ -83,7 +83,7 @@ def stream_answer(query: str, filename_filter: list = None) -> Generator[str, No
 
     Pipeline:
     1. Hybrid retrieval (BM25 + vector, RRF fusion)
-    2. Cross-encoder reranking
+    2. Lexical reranking (keyword overlap + RRF score)
     3. Citation formatting
     4. LLM streaming response
 
@@ -203,7 +203,8 @@ def answer_query(query: str, filename_filter: list = None) -> Dict:
 
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        # model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.1,
         max_tokens=1024,
