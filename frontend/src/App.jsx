@@ -315,7 +315,7 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="doc-list">
+                <div className="doc-list" data-clarity-mask="True">
                   {documents.map((doc, i) => (
                     <div key={i} className={`doc-item ${selectedDocs.includes(doc.filename) ? "active" : ""}`}>
                       {/* Checkbox for scope selection */}
@@ -417,7 +417,7 @@ export default function App() {
           </div>
 
           {/* Answer */}
-          <div className="answer-panel">
+          <div className="answer-panel" data-clarity-mask="True">
             <div className="panel-label">Answer</div>
             {!answer && !streaming && (
               <div className="answer-placeholder">
@@ -437,7 +437,7 @@ export default function App() {
 
           {/* Citations */}
           {citations.length > 0 && (
-            <div className="citations-panel">
+            <div className="citations-panel" data-clarity-mask="True">
               <div className="panel-label">Sources — click any to preview</div>
               <div className="citation-chips">
                 {citations.map((c, i) => (
