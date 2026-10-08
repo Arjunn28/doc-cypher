@@ -1,5 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+
+// The LLM writes LaTeX as \( ... \) and \[ ... \], which remark-math does not
+// recognise. Convert them to $$ ... $$ (inline) and a $$ block (display).
+// Single $ is deliberately NOT treated as math, so "$68.74" on an invoice
+// stays as currency instead of turning into a broken formula.
+function normalizeMath(text) {
+  return text
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_, expr) => `\n$$\n${expr.trim()}\n$$\n`)
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_, expr) => `$$${expr.trim()}$$`);
+}
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -102,12 +117,15 @@ export default function App() {
     formData.append("file", selectedFile);
     try {
       const res = await axios.post(`${API}/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" }, timeout: 120000,
+      // Large PDFs are embedded in rate-limited batches and can take a few minutes.
+        headers: { "Content-Type": "multipart/form-data" }, timeout: 300000,
       });
       setUploadMsg(`✓ ${res.data.details.filename} — ${res.data.details.chunks_created} chunks indexed`);
       setSelectedFile(null);
       await fetchDocuments();
-    } catch { setError("Upload failed. Check the file is a valid PDF."); }
+    } catch (err) {
+      setError(err.response?.data?.detail || "Upload failed. Check the file is a valid PDF.");
+    }
     finally { setUploading(false); }
   }
 
@@ -429,7 +447,12 @@ export default function App() {
             )}
             {(answer || streaming) && (
               <div className="answer-text">
-                {answer}
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {normalizeMath(answer)}
+                </ReactMarkdown>
                 {streaming && <span className="cursor" />}
               </div>
             )}
