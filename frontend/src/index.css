@@ -358,10 +358,31 @@ body {
 
 .answer-text {
   font-size: 15px;
-  line-height: 1.9;
+  line-height: 1.8;
   color: #1f2937;
-  white-space: pre-wrap;
 }
+
+/* Markdown elements rendered by react-markdown */
+.answer-text p { margin: 0 0 0.9em; }
+.answer-text p:last-of-type { margin-bottom: 0; }
+.answer-text ul,
+.answer-text ol { margin: 0 0 0.9em; padding-left: 1.4em; }
+.answer-text li { margin: 0.25em 0; }
+.answer-text li > ul,
+.answer-text li > ol { margin: 0.25em 0 0; }
+.answer-text strong { font-weight: 600; color: #0f172a; }
+.answer-text h1,
+.answer-text h2,
+.answer-text h3 { font-size: 15px; font-weight: 600; margin: 1.1em 0 0.4em; color: #0f172a; }
+.answer-text code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  background: #f3f4f6;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.answer-text .katex { font-size: 1.05em; }
+.answer-text .katex-display { margin: 0.6em 0; overflow-x: auto; overflow-y: hidden; }
 
 .answer-placeholder {
   color: #9ca3af;
