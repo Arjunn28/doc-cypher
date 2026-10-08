@@ -4,12 +4,19 @@ import numpy as np
 from typing import List, Dict, Tuple
 from rank_bm25 import BM25Okapi
 import chromadb
-from huggingface_hub import InferenceClient
 
+
+
+# from backend.ingest import (
+#     get_chroma_client,
+#     get_collection,
+#     BM25_PATH,
+# )
 
 from backend.ingest import (
     get_chroma_client,
     get_collection,
+    get_query_embedding,
     BM25_PATH,
 )
 
@@ -34,15 +41,15 @@ RRF_K = 60
 #     response.raise_for_status()
 #     return response.json()[0]
 
-HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-def get_query_embedding(query: str) -> List[float]:
-    client = InferenceClient(
-        provider="hf-inference",
-        api_key=os.getenv("HF_TOKEN"),
-    )
-    result = client.feature_extraction(query, model=HF_MODEL)
-    return result.tolist()
+# def get_query_embedding(query: str) -> List[float]:
+#     client = InferenceClient(
+#         provider="hf-inference",
+#         api_key=os.getenv("HF_TOKEN"),
+#     )
+#     result = client.feature_extraction(query, model=HF_MODEL)
+#     return result.tolist()
 
 # ─────────────────────────────────────────────
 # Load BM25 index from disk
