@@ -5,7 +5,6 @@ import chromadb
 import httpx
 from rank_bm25 import BM25Okapi
 from typing import List, Dict
-from huggingface_hub import InferenceClient
 
 # ─────────────────────────────────────────────
 # Configuration
@@ -17,7 +16,6 @@ BM25_PATH = os.path.join(os.path.dirname(__file__), "../data/bm25")
 CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 150
 
-# HF_EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 # ─────────────────────────────────────────────
 # Memory logging
 # ─────────────────────────────────────────────
@@ -27,53 +25,66 @@ def log_memory(label):
         import resource
         mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         print(f"[MEM] {label}: {mem / 1024:.1f} MB")
-    except:
+    except Exception:
         pass
 
 # ─────────────────────────────────────────────
-# Groq Embeddings — no local model, no RAM cost
+# Gemini Embeddings — no local model, no RAM cost
+#
+# History:
+#   1. sentence-transformers (local) -> OOM on Render's 512MB free tier
+#   2. HuggingFace Inference API     -> free credits exhausted, 402 on every upload (Oct 2026)
+#   3. Gemini Embedding API          -> current; free tier is rate-limited, not credit-based
+#
+# Model verified live: Oct 2026. If uploads start failing with a 404,
+# check https://ai.google.dev/gemini-api/docs/embeddings for the current model ID.
 # ─────────────────────────────────────────────
 
-# def get_embeddings(texts: List[str]) -> List[List[float]]:
-#     """Calls Groq embedding API. No local model loaded, no RAM spike."""
-#     headers = {
-#         "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
-#         "Content-Type": "application/json",
-#     }
-#     response = httpx.post(
-#         GROQ_EMBED_URL,
-#         headers=headers,
-#         json={"model": GROQ_EMBED_MODEL, "input": texts},
-#         timeout=60,
-#     )
-#     response.raise_for_status()
-#     data = response.json()
-#     return [item["embedding"] for item in data["data"]]
+GEMINI_EMBED_MODEL = "gemini-embedding-2"
+GEMINI_EMBED_DIM = 768
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
-# ─────────────────────────────────────────────
-# Hugging Face Embeddings — no local model, no RAM cost
-# ─────────────────────────────────────────────
-# def get_embeddings(texts: List[str]) -> List[List[float]]:
-#     """Calls HuggingFace Inference API. No local model, no RAM cost."""
-#     response = httpx.post(
-#         HF_EMBED_URL,
-#         json={"inputs": texts, "options": {"wait_for_model": True}},
-#         timeout=60,
-#     )
-#     response.raise_for_status()
-#     return response.json()
 
-# from huggingface_hub import InferenceClient
+def _gemini_headers() -> Dict[str, str]:
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY is not set on the server.")
+    return {"Content-Type": "application/json", "x-goog-api-key": key}
 
-HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-def get_embeddings(texts: List[str]) -> List[List[float]]:
-    client = InferenceClient(
-        provider="hf-inference",
-        api_key=os.getenv("HF_TOKEN"),
+
+def _embed_batch(texts: List[str]) -> List[List[float]]:
+    """Sends one batch request to Gemini and returns one vector per input text."""
+    payload = {
+        "requests": [
+            {
+                "model": f"models/{GEMINI_EMBED_MODEL}",
+                "content": {"parts": [{"text": t}]},
+                "output_dimensionality": GEMINI_EMBED_DIM,
+            }
+            for t in texts
+        ]
+    }
+    response = httpx.post(
+        f"{GEMINI_BASE}/{GEMINI_EMBED_MODEL}:batchEmbedContents",
+        headers=_gemini_headers(),
+        json=payload,
+        timeout=60,
     )
-    result = client.feature_extraction(texts, model=HF_MODEL)
-    # result is a numpy array of shape (n_texts, embedding_dim)
-    return result.tolist()
+    if response.status_code == 429:
+        raise RuntimeError("Embedding rate limit reached. Please wait a minute and try again.")
+    if response.status_code != 200:
+        raise RuntimeError(f"Gemini embedding error {response.status_code}: {response.text[:300]}")
+    return [e["values"] for e in response.json()["embeddings"]]
+
+
+def get_embeddings(texts: List[str]) -> List[List[float]]:
+    """Embeds document chunks for storage."""
+    return _embed_batch([f"title: none | text: {t}" for t in texts])
+
+
+def get_query_embedding(query: str) -> List[float]:
+    """Embeds a user query for retrieval."""
+    return _embed_batch([f"task: search result | query: {query}"])[0]
 
 # ─────────────────────────────────────────────
 # ChromaDB
@@ -83,7 +94,9 @@ def get_chroma_client():
     os.makedirs(CHROMA_PATH, exist_ok=True)
     return chromadb.PersistentClient(path=CHROMA_PATH)
 
-def get_collection(client, collection_name: str = "doccypher"):
+# "doccypher_v2" holds 768-dim Gemini vectors. The old "doccypher" collection
+# held 384-dim MiniLM vectors, and mixing the two in one collection would fail.
+def get_collection(client, collection_name: str = "doccypher_v2"):
     from chromadb.utils.embedding_functions import EmbeddingFunction
 
     class NoOpEmbeddingFunction(EmbeddingFunction):
@@ -155,40 +168,6 @@ def chunk_pages(pages: List[Dict]) -> List[Dict]:
 # Step 3: Store in ChromaDB
 # ─────────────────────────────────────────────
 
-# def store_in_chroma(chunks: List[Dict], collection) -> None:
-#     batch_size = 20  # Groq API processes up to 20 texts per request
-
-#     for i in range(0, len(chunks), batch_size):
-#         batch = chunks[i:i+batch_size]
-#         texts = [c["text"] for c in batch]
-#         ids = [c["chunk_id"] for c in batch]
-#         metadatas = [
-#             {
-#                 "filename": c["filename"],
-#                 "page_num": c["page_num"],
-#                 "chunk_index": c["chunk_index"],
-#             }
-#             for c in batch
-#         ]
-
-#         batch_embeddings = get_embeddings(texts)
-
-#         existing = collection.get(ids=ids)
-#         existing_ids = set(existing["ids"])
-#         new_indices = [j for j, id_ in enumerate(ids) if id_ not in existing_ids]
-
-#         if new_indices:
-#             collection.add(
-#                 ids=[ids[j] for j in new_indices],
-#                 documents=[texts[j] for j in new_indices],
-#                 embeddings=[batch_embeddings[j] for j in new_indices],
-#                 metadatas=[metadatas[j] for j in new_indices],
-#             )
-
-#         print(f"  Stored batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1}")
-
-#     print(f"Stored {len(chunks)} chunks in ChromaDB")
-
 def store_in_chroma(chunks: List[Dict], collection) -> None:
     batch_size = 20
 
@@ -207,7 +186,7 @@ def store_in_chroma(chunks: List[Dict], collection) -> None:
 
         try:
             batch_embeddings = get_embeddings(texts)
-            print(f"  Embeddings received, type: {type(batch_embeddings)}, len: {len(batch_embeddings)}")
+            print(f"  Embeddings received: {len(batch_embeddings)} vectors")
         except Exception as e:
             print(f"  ERROR getting embeddings: {e}")
             raise
