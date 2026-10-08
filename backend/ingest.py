@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import fitz
 import chromadb
 import httpx
@@ -52,6 +53,27 @@ def _gemini_headers() -> Dict[str, str]:
     return {"Content-Type": "application/json", "x-goog-api-key": key}
 
 
+# Free tier limits (AI Studio, Oct 2026): 100 RPM, 30K TPM, 1K RPD.
+# Each text in a batch counts as one request, and a 1500-char chunk is roughly
+# 375 tokens, so the 30K TPM cap is hit at about 80 chunks per minute (~30 PDF
+# pages). Larger PDFs need to wait out the minute window instead of failing.
+
+MAX_RATE_LIMIT_RETRIES = 4
+DEFAULT_RETRY_WAIT_SECONDS = 30
+
+
+def _retry_wait_seconds(response: httpx.Response) -> float:
+    """Reads Gemini's suggested wait (e.g. "retryDelay": "34s"), else a default."""
+    try:
+        for detail in response.json().get("error", {}).get("details", []):
+            delay = detail.get("retryDelay")
+            if delay:
+                return float(delay.rstrip("s")) + 1
+    except Exception:
+        pass
+    return DEFAULT_RETRY_WAIT_SECONDS
+
+
 def _embed_batch(texts: List[str]) -> List[List[float]]:
     """Sends one batch request to Gemini and returns one vector per input text."""
     payload = {
@@ -64,17 +86,33 @@ def _embed_batch(texts: List[str]) -> List[List[float]]:
             for t in texts
         ]
     }
-    response = httpx.post(
-        f"{GEMINI_BASE}/{GEMINI_EMBED_MODEL}:batchEmbedContents",
-        headers=_gemini_headers(),
-        json=payload,
-        timeout=60,
-    )
-    if response.status_code == 429:
-        raise RuntimeError("Embedding rate limit reached. Please wait a minute and try again.")
-    if response.status_code != 200:
+
+    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        response = httpx.post(
+            f"{GEMINI_BASE}/{GEMINI_EMBED_MODEL}:batchEmbedContents",
+            headers=_gemini_headers(),
+            json=payload,
+            timeout=60,
+        )
+
+        if response.status_code == 200:
+            return [e["values"] for e in response.json()["embeddings"]]
+
+        if response.status_code == 429:
+            # Daily quota exhausted: waiting a minute will not help, fail fast.
+            if "PerDay" in response.text:
+                raise RuntimeError(
+                    "Daily embedding limit reached. The quota resets at midnight Pacific time."
+                )
+            if attempt < MAX_RATE_LIMIT_RETRIES:
+                wait = _retry_wait_seconds(response)
+                print(f"  Rate limited (per-minute). Waiting {wait:.0f}s before retry "
+                      f"{attempt + 1}/{MAX_RATE_LIMIT_RETRIES}...")
+                time.sleep(wait)
+                continue
+            raise RuntimeError("Embedding rate limit reached. Please wait a minute and try again.")
+
         raise RuntimeError(f"Gemini embedding error {response.status_code}: {response.text[:300]}")
-    return [e["values"] for e in response.json()["embeddings"]]
 
 
 def get_embeddings(texts: List[str]) -> List[List[float]]:
